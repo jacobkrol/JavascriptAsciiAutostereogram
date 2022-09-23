@@ -1,0 +1,25 @@
+{
+  "name": "ascii-autostereogram",
+  "version": "1.0.0",
+  "description": "Now you can make Ascii Autostereograms .. using the power of Javascript. Or something. :3",
+  "main": "passphrasedict.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jacobkrol/JavascriptAsciiAutostereogram.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/jacobkrol/JavascriptAsciiAutostereogram/issues"
+  },
+  "homepage": "https://github.com/jacobkrol/JavascriptAsciiAutostereogram#readme",
+  "devDependencies": {
+    "babel-cli": "^6.26.0",
+    "babel-preset-react-app": "^3.1.2",
+    "terser": "^5.14.1"
+  }
+}

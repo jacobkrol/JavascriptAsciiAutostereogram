@@ -3,6 +3,9 @@
   <head>
     <title>Ascii Stereogram Generator Thing</title>
     <script type='text/javascript' src='passphrasedict.js'></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
     <script>
 
 window.dict = window.dict.concat("ad","ah","am","an","as","at","be","by","do","eh","go","ha","he","hi","ho","id","if","in","is","it","la","lo","ma","me","mi","mu","my","no","of","oh","on","or","ow","ox","pa","pi","so","to","uh","um","up","us","vs","we","yo","i","a"); // original list lacked 2 letter words
@@ -12,15 +15,21 @@ window.parallax = 15;
 window.darkLightData =
 { true:
   { "label": "Switch to Dark Mode 🌛"
-  , "background": "white"
-  , "color": "black"
+  , "background": "#f2f2f2"
+  , "color": "#111"
   }
 , false:
   { "label": "Switch to Light Mode 🌞"
   , "background": "black"
-  , "color": "white"
+  , "color": "#f2f2f2"
   }
 }
+
+window.canvasOutputMode = false;
+window.outputModeLabel = { 
+  true: "Switch to Plain Text Output", 
+  false: "Switch to Image Output"
+};
 
 window.modesData =
 { "words":
@@ -33,31 +42,17 @@ window.modesData =
   }
 }
 
-window.message =
-[ ["",0],
-  ["",0],
-  ["",0],
-  ["",0],
-  ["",0],
-  ["",0],
-  ["stop", 34],
-  ["wasting", 35],
-  ["your", 37],
-  ["time", 38],
-  ["",0],
-  ["get", 60],
-  ["a", 62],
-  ["life", 63],
-  ["",0],
-  ["",0],
-  ["",0],
-  ["",0],
-  ["",0],
-  ["",0],
-  ["",0],
-  ["",0],
-  ["",0],
-];
+window.gridHeight = 25;
+window.gridWidth = 80;
+
+window.message = Array(gridHeight).fill(["",0]);
+message[6] = ["stop", 34];
+message[7] = ["wasting", 35];
+message[8] = ["your", 37];
+message[9] = ["time", 38];
+message[11] = ["get", 60];
+message[12] = ["a", 62];
+message[13] = ["life", 63];
 
 // choose random integer R where min <= R < max
 function irand(min, max) { return( Math.floor( Math.random() * (max-min)) + min); }
@@ -96,6 +91,29 @@ for(length in bylength)
   }
 }
 
+const PIXEL_RATIO = (function() {
+  const ctx = document.createElement("canvas").getContext("2d"),
+        dpr = window.devicePixelRatio || 1,
+        bsr = ctx.webkitBackingStorePixelRatio ||
+              ctx.mozBackingStorePixelRatio ||
+              ctx.msBackingStorePixelRatio ||
+              ctx.oBackingStorePixelRatio ||
+              ctx.backingStorePixelRatio || 1;
+  
+  return dpr / bsr;
+})();
+
+function createHiDPICanvas(w, h, ratio) {
+  if(!ratio) { ratio = PIXEL_RATIO; }
+  const canv = document.createElement("canvas");
+  canv.width = w * ratio;
+  canv.height = h * ratio;
+  canv.style.width = w + "px";
+  canv.style.height = h + "px";
+  canv.getContext("2d").setTransform(ratio, 0, 0, ratio, 0, 0);
+  return canv;
+}
+
 function init()
 { let styleSheet = document.styleSheets[document.styleSheets.length - 1];
   styleSheet.insertRule("* {}", 0);
@@ -103,7 +121,7 @@ function init()
   render();
 }
 
-function render()
+function render(options = { msg: [], isImage: false })
 { let output = '';
   const mode = document.aFrm.modeSelect.value;
   let messageDelimiter = mode=="words"?" ":"";
@@ -115,10 +133,14 @@ function render()
   { characterChoices = [' '];
   }
 
-  for(i=0; i<23; i++)
+  for(i=0; i<gridHeight; i++)
   { let rowStuff;
-    message[i][0] = document.forms.aFrm["message"+i].value.trim();
-    message[i][1] = parseInt(document.forms.aFrm["offset"+i].value);
+    if(options.msg?.length) {
+      message = [...options.msg];
+    } else {
+      message[i][0] = document.forms.aFrm["message"+i].value.trim();
+      message[i][1] = parseInt(document.forms.aFrm["offset"+i].value);
+    }
   
     if(message[i]==null || message[i][0].length<1)
     { let str = "";
@@ -174,30 +196,86 @@ function render()
       str2 = [left[1], message[i][0], right[0], ''].join(messageDelimiter);
 
       rowStuff = [leftLen - message[i][1]%parallax + parallax, str1, message[i][1] - leftLen, str2];
-console.log(rowStuff, leftLen, rightLen);
     }
 
-//  output += "("+ rowStuff[0] +") ";
-    for(j=0; j<79; j++)
+    for(j=0; j<gridWidth; j++)
     { let str = (j>=rowStuff[2])?rowStuff[1]:rowStuff[3];
-//      if(j==rowStuff[2]) { output += "\u25A0"; }
       output += str[(j+rowStuff[0])%parallax];
     }
     output += "\n";
   }
 
-  document.getElementById("output").innerHTML = output;
+  // add parallax clues
+  output += "\n" + Array(Math.floor((gridWidth-parallax-1)/2)).fill(" ").join("") + "*" + Array(parallax-1).fill(" ").join("") + "*" + "\n";
+  
+  // output to correct format
+  if(options.isImage) {
+    // define constants
+    const margin = 12;
+    const lineHeight = 18;
+    const textBlockWidth = document.getElementById("text").clientWidth;
+    const canvWidth = Math.ceil(textBlockWidth + 2 * margin);
+    const canvHeight = Math.ceil((gridHeight + 2) * lineHeight + 2 * margin);
+    const canv = createHiDPICanvas(canvWidth, canvHeight);
+    const ctx = canv.getContext("2d");
+
+    // print output to canvas
+    ctx.fillStyle = universal.style.background;
+    ctx.fillRect(0,0,canv.width,canv.height);
+    ctx.fillStyle = universal.style.color;
+    ctx.textBaseline = "top";
+    const oxygenFont = new FontFace('Oxygen Mono', 'url(OxygenMono-Regular.ttf)');
+    oxygenFont.load().then(font => {
+      document.fonts.add(font);
+      console.log("Oxygen font loaded");
+      ctx.font = `${12*1.25}px Oxygen Mono`;
+
+      const text = Array(4).fill("this is a real test ").join("");
+      const outputRows = output.split("\n");
+      for(let row = 0; row < outputRows.length; row++) {
+        ctx.fillText(outputRows[row], margin, lineHeight*row + margin);
+      }
+
+      // print canvas to DOM
+      document.getElementById("image").innerHTML = "";
+      document.getElementById("text").innerHTML = "";
+      document.getElementById("image").appendChild(canv);
+
+    }).catch(err => {
+      console.log("Font failed to load:",err);
+      ctx.font = `${12*1.25}px monospace`;
+
+      const text = Array(4).fill("this is a real test ").join("");
+      const outputRows = output.split("\n");
+      for(let row = 0; row < outputRows.length; row++) {
+        ctx.fillText(outputRows[row], margin, lineHeight*row + margin);
+      }
+
+      // print canvas to DOM
+      document.getElementById("image").innerHTML = "";
+      document.getElementById("text").innerHTML = "";
+      document.getElementById("image").appendChild(canv);
+    });
+    
+  } else {
+    // print plain text to DOM
+    document.getElementById("image").innerHTML = "";
+    document.getElementById("text").innerHTML = output;
+  }
 }
 
-function setDarkLightMode(pressed=false)
-{ let button = document.getElementById('darkLightModeButton');
-  let isDark = button.innerText == darkLightData[true].label;
-  if(pressed)
-  { isDark = ! isDark; }
+function setDarkLightMode(pressed=false) {
+  let button = document.getElementById('darkLightModeButton');
+  let isDark = JSON.parse(window.localStorage.getItem('isDarkMode'));
+  if(pressed) {
+    isDark = !isDark;
+    window.localStorage.setItem('isDarkMode', JSON.stringify(isDark));
+  }
 
   button.innerText = darkLightData[isDark].label;
   universal.style.background = darkLightData[isDark].background;
   universal.style.color = darkLightData[isDark].color;
+  universal.style.borderColor = darkLightData[isDark].color;
 }
 
 function setModePanel()
@@ -217,12 +295,137 @@ function characterChoicesAdd(newCharacters)
 }
 
     </script>
+    <script defer type="text/babel">
+
+      const width = gridWidth || 80;
+      const height = gridHeight || 25;
+      const emptyChar = ".";
+    
+      function Grid() {
+        const [cursor, setCursor] = React.useState(0);
+        const [arr, setArr] = React.useState(Array(width*height).fill(emptyChar));
+
+        React.useEffect(() => {
+          window.addEventListener("keypress", handleKeyPress);
+          window.addEventListener("keydown", handleKeyDown);
+
+          return () => {
+            window.removeEventListener("keypress", handleKeyPress);
+            window.removeEventListener("keydown", handleKeyDown);
+          }
+        }, [cursor]);
+
+        const handleKeyPress = React.useCallback((evt) => {
+          // add new letter
+          if(/^[a-z.]$/.test(evt.key)) {
+            setArr(prev => {
+              let prevCopy = [...prev];
+              prevCopy[cursor] = evt.key;
+              return prevCopy;
+            });
+            setCursor(prev => prev + 1);
+          }
+          
+        }, [cursor]);
+
+        const handleKeyDown = React.useCallback((evt) => {
+          // prevent scrolling
+          if([" ", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(evt.key)) {
+            evt.preventDefault();
+          }
+
+          // handle logic of each key
+          if(evt.key === "Backspace" && cursor > 0) {
+            setArr(prev => {
+              let prevCopy = [...prev];
+              prevCopy[cursor-1] = emptyChar;
+              return prevCopy;
+            });
+            setCursor(prev => prev - 1);
+          } else if(evt.key === "ArrowDown" && Math.floor(cursor/width) < height - 1) {
+            setCursor(prev => prev + width);
+          } else if(evt.key === "ArrowUp" && Math.floor(cursor/width) > 0) {
+            setCursor(prev => prev - width);
+          } else if((evt.key === "ArrowRight" || evt.key === " ") && cursor % width < width - 1) {
+            setCursor(prev => prev + 1);
+          } else if(evt.key === "ArrowLeft" && cursor % width > 0) {
+            setCursor(prev => prev - 1);
+          } else if(evt.key === "Delete") {
+            setArr(prev => {
+              let prevCopy = [...prev];
+              prevCopy[cursor] = emptyChar;
+              return prevCopy;
+            });
+          }
+        });
+
+        const handleRender = () => {
+          // mutate array to message format
+          let msg = Array(height).fill(["", 0]);
+          for(let row=0; row < height; row++) {
+
+            // begin parsing row characters
+            const arrRow = arr.slice(row*width, (row+1)*width);
+            const startChar = arrRow.find(char => char !== ".");
+
+            // verify that there is a message in this row
+            if(!startChar) continue;
+
+            // collect start and end positions
+            const startOffset = arrRow.indexOf(startChar);
+            const endChar = [...arrRow].reverse().find(char => char !== ".");
+            const endOffset = arrRow.length - [...arrRow].reverse().indexOf(endChar);
+            const msgRowStr = arrRow.slice(startOffset, endOffset).join("").replace("."," ");
+
+            // verify that the message is short enough
+            if(parallax - msgRowStr.length < 6) {
+              alert(`Cannot encode: parallax = ${parallax}, so longest possible foreground word must be ${parallax-6} or fewer characters long.\n`
+              + `'${msgRowStr}' looks too long, at ${msgRowStr.length} characters.`);
+              break;
+            }
+
+            msg[row] = [msgRowStr, startOffset];
+          }
+
+          render({ msg });
+        }
+
+        return <React.Fragment>
+          <div style={{ display: "grid", gridTemplate: `repeat(${height}, 2rem) / repeat(${width}, 1rem)`, border: "2px solid gray", padding: "0.5rem" }}>
+            {arr.map((char,i) => <div key={i} style={{ border: "none", fontFamily: "inherit", textDecoration: cursor === i ? "underline" : "none" }}><p onClick={() => setCursor(i)} style={{ margin: 0 }}>{char}</p><input type="text" style={{ visibility: "hidden" }} /></div>)}
+          </div>
+          <button onClick={handleRender}>Render</button>
+        </React.Fragment>;
+      }
+
+      const container = document.getElementById('text_grid');
+      const root = ReactDOM.createRoot(container);
+      root.render(<Grid />);
+
+      
+
+    </script>
+    <script type="text/javascript">
+      function toggleOutputMode() {
+        canvasOutputMode = !canvasOutputMode;
+        document.getElementById("outputModeButton").innerText = outputModeLabel[canvasOutputMode];
+        render({ isImage: canvasOutputMode });
+      }
+    </script>
     <style>
-#output {border: 2px inset #666; font-family: monospace; whitespace: no-wrap; display: inline-block; padding: 12px 15px; }
-p {padding: 0; margin: 0; }
-.offset { width: 25px; }
-.message { width: 100px; }
-#darkLightModeButton { font-size: 10pt; width: 200px; }
+      @font-face {
+        font-family: 'Oxygen Mono';
+        src: url('OxygenMono-Regular.ttf');
+      }
+      :root { font-size: 12px; }
+      #text_grid { font-family: 'Oxygen Mono', monospace; font-size: 1rem; margin: 1rem auto; }
+      #output { border: 2px inset #666; font-family: 'Oxygen Mono', monospace; font-size: 1.25rem; white-space: no-wrap; display: inline-block; padding: 12px 15px; margin: 1rem; }
+      #text { font-family: inherit; }
+      p {padding: 0; margin: 0; }
+      .offset { width: 25px; }
+      .message { width: 100px; }
+      button { font-size: 1rem; width: 200px; border-radius: 0.25rem; padding: 0.5rem; margin: 1rem 0; cursor: pointer; }
+      .subheader { font-family: "Trebuchet MS", sans-serif; font-weight: bold; font-size: 1.25rem; margin: 1rem 0; }
     </style>
   </head>
   <body onLoad='init()'>
@@ -231,10 +434,20 @@ p {padding: 0; margin: 0; }
         <script>document.write(darkLightData[true].label);</script>
       </button>
     </p>
-    <pre id='output'></pre>
+    <p class="subheader">Custom Input:</p>
+    <div id="text_grid"></div>
+    <p class="subheader">Magic Eye Output:</p>
+    <button id="outputModeButton" onClick="toggleOutputMode()" style="display: block">
+      <script>document.write(outputModeLabel[canvasOutputMode])</script>
+    </button>
+    <div id='output'>
+      <pre id="text"></pre>
+      <pre id="image"></pre>
+    </div>
+    <p class="subheader">Manual Input:</p>
     <form name='aFrm' id='aFrm' action="javascript:render(); void(0); //" method="get">
 <script>
-for(let i=0; i<23; i++)
+for(let i=0; i<gridHeight; i++)
 { document.writeln("<p><input type='text' maxlength='2' class='offset' name='offset"+ i +"' value='"+ message[i][1] +"'> "+
       "<input type='text' maxlength='9' class='message' name='message"+ i +"' value='"+ message[i][0] +"'></p>");
 }
